@@ -1,6 +1,6 @@
 {
   "name": "wasdk-idl",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Tools for generating JavaScript and C++ code from WebIDL.",
   "main": "dist/idl.js",
   "types": "dist/idl.d.ts",
@@ -8,10 +8,16 @@
     "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "bin": {
+    "wasdk-idl": "dist/cli.js"
+  },
   "author": "Yury Delendik",
   "license": "Apache-2.0",
   "devDependencies": {
     "typescript": "^2.2.2",
     "webidl2": "^2.3.0"
+  },
+  "dependencies": {
+    "@types/node": "^7.0.12"
   }
 }

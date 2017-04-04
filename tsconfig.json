@@ -9,6 +9,7 @@
         "node_modules"
     ],
     "files": [
-        "src/idl.ts"
+        "src/idl.ts",
+        "src/cli.ts"
     ]
 }
