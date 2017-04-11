@@ -1,0 +1,14 @@
+{
+    "compilerOptions": {
+
+    },
+    "output": "hello.wasm",
+    "interface": "",
+    "files": [
+        "hello.cpp"
+    ],
+    "options": {
+        "EXPORTED_RUNTIME_METHODS": [],
+        "EXPORTED_FUNCTIONS": ["__ZN5Hello8Universe6CreateEv","__ZN5Hello8Universe10giveAnswerEPi"]
+    }
+}

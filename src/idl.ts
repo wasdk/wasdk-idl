@@ -30,6 +30,7 @@ const enum MemoryType {
   Int32,
   Float,
   Double,
+  String,
   Ptr
 }
 
@@ -37,6 +38,7 @@ const enum KnownTypeKind {
   Unknown,
   Builtin,
   Interface,
+  String,
   Callback
 }
 
@@ -111,6 +113,14 @@ export class WebIDLWasmGen {
         cxxAlignedType: t.cxxAlignedType
       };
     });
+    this._knownTypes['DOMString'] = {
+        kind: KnownTypeKind.String,
+        cxxType: 'wasmbase::StringBox',
+        size: 8,
+        mangled: 'StringBox'.length + 'StringBox',
+        getValue: {memory: MemoryType.String},
+        cxxAlignedType: 'wasmbase::StringBox'
+    };
   }
 
   private initResults() {
@@ -162,6 +172,8 @@ const NullPtr = 0;
     this._hText.push(`#ifndef __${this._moduleName.toUpperCase()}_H
 #define __${this._moduleName.toUpperCase()}_H
 
+#include <wasmbase.h>
+
 namespace ${this._moduleName} {`);
 
     this._cxxText = [];
@@ -187,6 +199,8 @@ using namespace ${this._moduleName};`);
     // https://refspecs.linuxbase.org/cxxabi-1.75.html#mangling-type
     var buf = ['__ZN', this._moduleName.length + this._moduleName];
     var substitutions = Object.create(null), substitutionId = 0;
+    if ((<string>name).indexOf('::') >= 0)
+      name = (<string>name).split(/::/g);
     if (Array.isArray(name)) {
       name.forEach(n => {
         buf.push(n.length + '', n)
@@ -202,15 +216,28 @@ using namespace ${this._moduleName};`);
       } else {
         fnArgs.forEach(arg => {
           var j = arg.length;
-          while (arg[j - 1] === '*') {
-            buf.push('P');
+          while (arg[j - 1] === '*' || arg[j - 1] === '&') {
+            buf.push(arg[j - 1] === '*' ? 'P' : 'R');
             j--;
           }
-          var type = this._knownTypes[arg = arg.substring(0, j)];
-          if (type.kind !== KnownTypeKind.Builtin) {
+          arg = arg.substring(0, j);
+          if (arg.indexOf('const ') == 0) {
+            arg = arg.substring('const '.length);
+            buf.push('K');
+          }
+          var type = this._knownTypes[arg];
+          if (type.kind === KnownTypeKind.String) {
+            if (substitutions['StringBox'] !== undefined) {
+              buf.push(`S${substitutions['StringBox'].toString(36)}_`);
+            } else {
+              substitutions['StringBox'] = substitutionId++;
+              buf.push(`N${'wasmbase'.length}wasmbase${'StringBox'.length}StringBoxE`);
+            }
+          } else if (type.kind !== KnownTypeKind.Builtin) {
+            console.log(arg + type.kind);
               if (substitutions[arg] !== undefined) {
                 buf.push(`S${substitutions[arg].toString(36)}_`);
-              } else {
+              } else if (type.mangled) {
                 substitutions[arg] = substitutionId++;
                 buf.push(`NS_${type.mangled}E`);
               }
@@ -258,6 +285,9 @@ using namespace ${this._moduleName};`);
       case MemoryType.Double:
         s = `_data.getFloat64(${offset})`;
         break;
+      case MemoryType.String:
+        s = `wasmbase.StringBox.get(${offset})`;
+        break;
       default:
         throw new Error('Unknown MemoryType');
     }
@@ -299,6 +329,9 @@ using namespace ${this._moduleName};`);
       case MemoryType.Double:
         s = `_data.setFloat64(${offset}, ${s})`;
         break;
+      case MemoryType.String:
+        s = `wasmbase.StringBox.set(${offset}, ${s})`;
+        break;
       default:
         throw new Error('Unknown MemoryType');
     }
@@ -337,6 +370,14 @@ using namespace ${this._moduleName};`);
             outStatements.push(`unregCallback_${v.idlType.idlType}(c${i}, ${v.name});`);
             outStatements.push(`${this.mangleName([v.idlType.idlType, 'Destroy'], [])}();`);
             break;
+          case KnownTypeKind.String:
+            var offset = `${blobName} + ${size}`;
+            size += 8;
+            inStatements.push(`wasmbase.StringBox.init(${offset}, ${v.name});`);
+            outStatements.push(`wasmbase.StringBox.destroy(${offset});`)
+            callArgs.push(offset);
+            callArgsTypes.push(`const DOMString&`);
+            break;
           default:
             callArgs.push(v.name);
             callArgsTypes.push(v.idlType.idlType);
@@ -348,11 +389,18 @@ using namespace ${this._moduleName};`);
       outVars.forEach((v, i) => {
         var offset = `${blobName} + ${size}`;
         callArgs.push(offset);
+        var cleanup = null;
         switch (this.getTypeKind(v.idlType)) {
           case KnownTypeKind.Interface:
           case KnownTypeKind.Callback:
             size += PtrSize;
             callArgsTypes.push(v.idlType.idlType + '**');
+            break;
+          case KnownTypeKind.String:
+            size += 8;
+            inStatements.push(`wasmbase.StringBox.init(${offset});`);
+            cleanup = `wasmbase.StringBox.destroy(${offset});`;
+            callArgsTypes.push(`DOMString*`);
             break;
           default:
             size += this.typeSize(v.idlType);
@@ -360,6 +408,10 @@ using namespace ${this._moduleName};`);
             break;
         }
         outStatements.push(`var ${v.name} = ${this.getTypedValue(v.idlType, offset)};`);
+        if (cleanup) {
+          outStatements.push(cleanup);
+          cleanup = null;
+        }
       });
     }
     return {
@@ -535,7 +587,9 @@ bool ${interface_.name}::set_${m.name}(${this.getCxxType(attr.idlType)} value)
           var argsJS = [], argsCxx = [];
           op.arguments.forEach(a => {
             argsJS.push(a.name);
-            argsCxx.push(`${this.getCxxType(a.idlType)} ${a.name}`);
+            var type = this.getCxxType(a.idlType);
+            if (type == 'wasmbase::StringBox') type = 'const wasmbase::StringBox&';
+            argsCxx.push(`${type} ${a.name}`);
           });
           var result = m.idlType.idlType !== "void" ? [{name: 'result', idlType: m.idlType}] : null;
           if (result) {

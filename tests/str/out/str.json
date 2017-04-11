@@ -1,0 +1,14 @@
+{
+    "compilerOptions": {
+
+    },
+    "output": "str.wasm",
+    "interface": "",
+    "files": [
+        "str.cpp"
+    ],
+    "options": {
+        "EXPORTED_RUNTIME_METHODS": [],
+        "EXPORTED_FUNCTIONS": ["__ZN3Str4Test13createAndFillEjhPj","__ZN3Str4Test7destroyEj","__ZN3Str4Test4flipERKN8wasmbase9StringBoxEPS2_"]
+    }
+}

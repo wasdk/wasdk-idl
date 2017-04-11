@@ -1,0 +1,6 @@
+interface Test {
+  static unsigned long createAndFill(unsigned long size, octet fill);
+  static void destroy(unsigned long ptr);
+  static DOMString flip(DOMString s);
+};
+
