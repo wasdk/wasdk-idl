@@ -1,6 +1,8 @@
 #ifndef __HELLO_H
 #define __HELLO_H
 
+#include <wasmbase.h>
+
 namespace Hello {
 class Universe;
 // Universe class definition

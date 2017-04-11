@@ -481,11 +481,11 @@ using namespace ${this._moduleName};`);
   private parseInterface(interface_: IDLInterface, typeid: number): void {
     function writePreCall(gen: WebIDLWasmGen, inVars: VarInformation[], outVars: VarInformation[], isStatic: boolean): SerializeCallArgumentsInfo {
       var p = gen.serializeCallArguments(inVars, outVars, isStatic, '_stack');
-      p.inStatements.forEach(s => jsText.push("    " + s));
       if (p.size > 0) {
         jsText.push(`    var _data = new DataView(_memory.buffer, 0);`);
         jsText.push(`    var _stack = stackPush(${p.size});`);
       }
+      p.inStatements.forEach(s => jsText.push("    " + s));
       return p;
     }
     function writePostCall(p: SerializeCallArgumentsInfo): void {

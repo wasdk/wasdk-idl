@@ -1,6 +1,8 @@
 #ifndef __STR_H
 #define __STR_H
 
+#include <wasmbase.h>
+
 namespace Str {
 class Test;
 // Test class definition

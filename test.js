@@ -28,8 +28,9 @@ function runTest(testPath) {
     return;
   }
   var expected = path.join(testPath, 'out');
-  result = spawnSync('diff', ['-r', expected, runOut], {shell: true});
+  result = spawnSync('diff', ['-r', '-U', 3, expected, runOut], {shell: true});
   if (result.status != 0) {
+    failedTests++;
     console.error('Test ' + testPath + ' failed:');
     console.error(result.stdout.toString());
     return;      

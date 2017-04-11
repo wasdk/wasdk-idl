@@ -58,10 +58,10 @@ class Test {
       throw new Error("call Test destroy");
   }
   static flip(s) {
-    wasmbase.StringBox.init(_stack + 0, s);
-    wasmbase.StringBox.init(_stack + 8);
     var _data = new DataView(_memory.buffer, 0);
     var _stack = stackPush(16);
+    wasmbase.StringBox.init(_stack + 0, s);
+    wasmbase.StringBox.init(_stack + 8);
     var success = _module.exports.__ZN3Str4Test4flipERKN8wasmbase9StringBoxEPS2_(_stack + 0, _stack + 8);
     wasmbase.StringBox.destroy(_stack + 0);
     var result = wasmbase.StringBox.get(_stack + 8);
