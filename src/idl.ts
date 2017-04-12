@@ -52,7 +52,6 @@ interface KnownType {
   kind: KnownTypeKind;
   cxxType: string;
   size: number;
-  mangled: string;
   getValue: GetValueParams;
   cxxAlignedType: string;
 }
@@ -74,17 +73,52 @@ interface SerializeCallbackArgumentsInfo {
   outStatements: string[];
 }
 
-var BuiltinTypes: {name: string; cxxType: string; size: number; mangled: string; getValue: GetValueParams; cxxAlignedType: string;}[] = [
-  { name: 'octet', cxxType: 'unsigned char', size: 4, mangled: 'h', getValue: {memory: MemoryType.Uint8}, cxxAlignedType: 'unsigned int'},
-  { name: 'byte', cxxType: 'signed char', size: 4, mangled: 'a', getValue: {memory: MemoryType.Int8}, cxxAlignedType: 'int'},
-  { name: 'boolean', cxxType: 'bool', size: 4, mangled: 'b', getValue: {memory: MemoryType.Uint8, wrapper: "!!($)", cast: "$?1:0"}, cxxAlignedType: 'unsigned int'},
-  { name: 'short', cxxType: 'short', size: 4, mangled: 's', getValue: {memory: MemoryType.Int16}, cxxAlignedType: 'int'},
-  { name: 'unsigned short', cxxType: 'unsigned short', size: 4, mangled: 't', getValue: {memory: MemoryType.Uint16}, cxxAlignedType: 'unsigned int'},
-  { name: 'long', cxxType: 'int', size: 4, mangled: 'i', getValue: {memory: MemoryType.Int32}, cxxAlignedType: 'int'},
-  { name: 'unsigned long', cxxType: 'unsigned int', size: 4, mangled: 'j', getValue: {memory: MemoryType.Uint32}, cxxAlignedType: 'unsigned int'},
-  { name: 'float', cxxType: 'float', size: 4, mangled: 'f', getValue: {memory: MemoryType.Float}, cxxAlignedType: 'float'},
-  { name: 'double', cxxType: 'double', size: 8, mangled: 'd', getValue: {memory: MemoryType.Double}, cxxAlignedType: 'double'}
+var BuiltinTypes: {name: string; cxxType: string; size: number; getValue: GetValueParams; cxxAlignedType: string;}[] = [
+  { name: 'octet', cxxType: 'unsigned char', size: 4, getValue: {memory: MemoryType.Uint8}, cxxAlignedType: 'unsigned int'},
+  { name: 'byte', cxxType: 'signed char', size: 4, getValue: {memory: MemoryType.Int8}, cxxAlignedType: 'int'},
+  { name: 'boolean', cxxType: 'bool', size: 4, getValue: {memory: MemoryType.Uint8, wrapper: "!!($)", cast: "$?1:0"}, cxxAlignedType: 'unsigned int'},
+  { name: 'short', cxxType: 'short', size: 4, getValue: {memory: MemoryType.Int16}, cxxAlignedType: 'int'},
+  { name: 'unsigned short', cxxType: 'unsigned short', size: 4, getValue: {memory: MemoryType.Uint16}, cxxAlignedType: 'unsigned int'},
+  { name: 'long', cxxType: 'int', size: 4, getValue: {memory: MemoryType.Int32}, cxxAlignedType: 'int'},
+  { name: 'unsigned long', cxxType: 'unsigned int', size: 4, getValue: {memory: MemoryType.Uint32}, cxxAlignedType: 'unsigned int'},
+  { name: 'float', cxxType: 'float', size: 4, getValue: {memory: MemoryType.Float}, cxxAlignedType: 'float'},
+  { name: 'double', cxxType: 'double', size: 8, getValue: {memory: MemoryType.Double}, cxxAlignedType: 'double'}
 ];
+
+function mangleNamePart(cxxName: string, subst: {map: any, nextId: number}, notsubst: number = 0): string {
+  switch (cxxName) {
+    case 'unsigned char': return 'h';
+    case 'signed char': return 'a';
+    case 'bool': return 'b';
+    case 'short': return 's';
+    case 'unsigned short': return 't';
+    case 'int': return 'i';
+    case 'unsigned int': return 'j';
+    case 'float': return 'f';
+    case 'double': return 'd';
+  }
+  if (notsubst == 0 && subst.map[cxxName])
+    return subst.map[cxxName];
+  var parts = cxxName.split(/::/g), i = parts.length - 1 - notsubst;
+  while (i > 0 && !subst.map[parts.slice(0, i).join('::')]) i--;
+  var result = ['N'];
+  if (i > 0) {
+    result.push(subst.map[parts.slice(0, i).join('::')]);
+  }
+  while (i < parts.length - notsubst) {
+    result.push(parts[i].length + parts[i]);
+    var id = 'S' + (subst.nextId < 0 ? '' : subst.nextId.toString(36).toUpperCase()) + '_';
+    subst.nextId++;
+    i++;
+    subst.map[parts.slice(0, i).join('::')] = id;
+  }
+  while (i < parts.length) {
+    result.push(parts[i].length + parts[i]);
+    i++;
+  }
+  result.push('E');
+  return result.join('');
+}
 
 export class WebIDLWasmGen {
   private _moduleName: string;
@@ -108,7 +142,6 @@ export class WebIDLWasmGen {
         kind: KnownTypeKind.Builtin,
         cxxType: t.cxxType,
         size: t.size,
-        mangled: t.mangled,
         getValue: t.getValue,
         cxxAlignedType: t.cxxAlignedType
       };
@@ -117,7 +150,6 @@ export class WebIDLWasmGen {
         kind: KnownTypeKind.String,
         cxxType: 'wasmbase::StringBox',
         size: 8,
-        mangled: 'StringBox'.length + 'StringBox',
         getValue: {memory: MemoryType.String},
         cxxAlignedType: 'wasmbase::StringBox'
     };
@@ -197,19 +229,10 @@ using namespace ${this._moduleName};`);
 
   private mangleName(name: ClassOrFunctionName, fnArgs?): string {
     // https://refspecs.linuxbase.org/cxxabi-1.75.html#mangling-type
-    var buf = ['__ZN', this._moduleName.length + this._moduleName];
-    var substitutions = Object.create(null), substitutionId = 0;
-    if ((<string>name).indexOf('::') >= 0)
-      name = (<string>name).split(/::/g);
-    if (Array.isArray(name)) {
-      name.forEach(n => {
-        buf.push(n.length + '', n)
-        substitutions[n] = substitutionId++;
-      });
-    } else {
-      buf.push(name.length + '', name);
-    }
-    buf.push('E');
+    var subst = {map: Object.create(null), nextId: -1};
+    var fullname = this._moduleName + '::' +
+      (Array.isArray(name) ? name.join('::') : name);
+    var buf = ['__Z', mangleNamePart(fullname, subst, 1)];
     if (Array.isArray(fnArgs)) {
       if (fnArgs.length == 0) {
         buf.push('v'); // void
@@ -227,22 +250,11 @@ using namespace ${this._moduleName};`);
           }
           var type = this._knownTypes[arg];
           if (type.kind === KnownTypeKind.String) {
-            if (substitutions['StringBox'] !== undefined) {
-              buf.push(`S${substitutions['StringBox'].toString(36)}_`);
-            } else {
-              substitutions['StringBox'] = substitutionId++;
-              buf.push(`N${'wasmbase'.length}wasmbase${'StringBox'.length}StringBoxE`);
-            }
+            buf.push(mangleNamePart('wasmbase::StringBox', subst));
           } else if (type.kind !== KnownTypeKind.Builtin) {
-            console.log(arg + type.kind);
-              if (substitutions[arg] !== undefined) {
-                buf.push(`S${substitutions[arg].toString(36)}_`);
-              } else if (type.mangled) {
-                substitutions[arg] = substitutionId++;
-                buf.push(`NS_${type.mangled}E`);
-              }
+            buf.push(mangleNamePart(this._moduleName + '::' + arg, subst));
           } else {
-              buf.push(type.mangled);
+            buf.push(mangleNamePart(type.cxxType, subst));
           }
         });
       }
@@ -727,7 +739,6 @@ bool ${callback.name}::Call(${argsCxx.join(', ')})
             kind: KnownTypeKind.Interface,
             cxxType: interface_.name + '*',
             size: PtrSize,
-            mangled: interface_.name.length + interface_.name,
             getValue: {memory: MemoryType.Ptr, wrapper: `lookupObject_${interface_.name}($)`, cast: `ptrOrNull($)`},
             cxxAlignedType: 'void*'
           };
@@ -739,7 +750,6 @@ bool ${callback.name}::Call(${argsCxx.join(', ')})
             kind: KnownTypeKind.Callback,
             cxxType: callback.name + '*',
             size: PtrSize,
-            mangled: callback.name.length + callback.name,
             getValue: {memory: MemoryType.Ptr, wrapper: `lookupObject_${callback.name}($)`},
             cxxAlignedType: 'void*'
           };
