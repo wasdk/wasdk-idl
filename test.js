@@ -9,7 +9,7 @@ var tests = fs.readdirSync(path.join(__dirname, 'tests')).map(function (name) {
 });
 
 var cliPath = require.resolve('./dist/cli.js');
-var nodePath = process.argv0;
+var nodePath = 'node';
 
 var runTests = 0, failedTests = 0;
 
@@ -20,7 +20,7 @@ function runTest(testPath) {
   var runOut = path.join(testPath, 'run');
   spawnSync('rm', ['-rf', runOut], {shell: true});
   var result;
-  result = spawnSync(nodePath, [cliPath, idlPath, runOut]);
+  result = spawnSync(nodePath, [cliPath, idlPath, runOut], {shell: true});
   if (result.status != 0) {
     failedTests++;
     console.error('Test ' + testPath + ' failed: error during transform.');

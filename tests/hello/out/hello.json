@@ -3,7 +3,9 @@
 
     },
     "output": "hello.wasm",
-    "interface": "",
+    "dependencies": [
+        "wasmbase"
+    ],
     "files": [
         "hello.cpp"
     ],

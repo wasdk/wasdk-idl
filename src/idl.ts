@@ -795,7 +795,9 @@ bool ${callback.name}::Call(${argsCxx.join(', ')})
 
     },
     "output": "${this._filePrefix}.wasm",
-    "interface": "",
+    "dependencies": [
+        "wasmbase"
+    ],
     "files": [
         "${this._filePrefix}.cpp"
     ],
